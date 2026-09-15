@@ -345,4 +345,4 @@ stay dependency-free.
 
 The known limitations of the quantum mapping (discretisation, qubit budget,
 QAOA heuristics, penalty method, conflict-model fidelity) are documented
-honestly in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+honestly in the Master thesis.
