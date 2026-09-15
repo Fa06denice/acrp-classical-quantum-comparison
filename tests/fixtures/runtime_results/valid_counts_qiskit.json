@@ -1,0 +1,9 @@
+{
+  "_note": "synthetic anonymized",
+  "kind": "counts",
+  "bit_order": "qiskit",
+  "counts": {
+    "100000": 700,
+    "000001": 324
+  }
+}

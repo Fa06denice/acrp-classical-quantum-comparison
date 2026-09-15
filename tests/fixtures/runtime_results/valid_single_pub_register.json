@@ -1,0 +1,15 @@
+{
+  "_note": "synthetic anonymized",
+  "kind": "counts",
+  "bit_order": "qubo",
+  "pubs": [
+    {
+      "registers": {
+        "meas": {
+          "0000": 10,
+          "1111": 6
+        }
+      }
+    }
+  ]
+}

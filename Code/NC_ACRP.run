@@ -1,0 +1,19 @@
+reset;
+
+model NC_ACRP.mod;
+
+problem NC_ACRP: Obj,q,theta,vrx,vry,z,bin11,bin12,cvrx,cvry,bin311,bin312,bin321,bin322,bin331,bin332,bin341,bin342;
+option solver couenne;
+
+data ("CP_4.dat");		
+	
+let A := 1..n;
+let wd := 0.5;
+
+# pre-processing of variables bounds and coefficients
+include Preprocessing.run;
+
+problem NC_ACRP;
+solve NC_ACRP;
+
+display q,theta,Obj;

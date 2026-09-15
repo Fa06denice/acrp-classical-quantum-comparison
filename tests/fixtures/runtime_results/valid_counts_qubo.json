@@ -1,0 +1,10 @@
+{
+  "_note": "synthetic anonymized SamplerV2-shape recording; no PII/token",
+  "kind": "counts",
+  "bit_order": "qubo",
+  "counts": {
+    "000000": 812,
+    "000011": 150,
+    "111111": 62
+  }
+}

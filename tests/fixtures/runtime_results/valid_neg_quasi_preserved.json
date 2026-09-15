@@ -1,0 +1,9 @@
+{
+  "_note": "synthetic anonymized; negative quasi preserved not clamped",
+  "kind": "quasi",
+  "bit_order": "qubo",
+  "counts": {
+    "000": 1.1,
+    "111": -0.1
+  }
+}

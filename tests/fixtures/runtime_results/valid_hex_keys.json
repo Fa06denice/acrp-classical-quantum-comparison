@@ -1,0 +1,9 @@
+{
+  "_note": "synthetic anonymized",
+  "kind": "counts",
+  "bit_order": "qubo",
+  "counts": {
+    "0x5": 9,
+    "0x2": 3
+  }
+}

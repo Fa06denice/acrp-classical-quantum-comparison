@@ -1,0 +1,21 @@
+{
+  "_note": "synthetic anonymized",
+  "kind": "counts",
+  "bit_order": "qubo",
+  "pubs": [
+    {
+      "registers": {
+        "a": {
+          "00": 1
+        }
+      }
+    },
+    {
+      "registers": {
+        "b": {
+          "11": 1
+        }
+      }
+    }
+  ]
+}

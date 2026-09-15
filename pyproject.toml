@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acrp-quantum"
+version = "0.1.0"
+description = "Classical vs quantum/hybrid benchmark layer for the 2D Aircraft Conflict Resolution Problem (ACRP)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "ACRP-Q contributors" }]
+keywords = ["acrp", "air-traffic-control", "qaoa", "qiskit", "optimization", "benchmark"]
+
+# CORE has ZERO third-party dependencies on purpose: the data model, AMPL
+# parser/loader, geometry kernel, discrete reformulation, QUBO/Ising build,
+# decoding, the exact reference solver, metrics, scenarios and export are all
+# pure-stdlib Python and run with nothing installed. Everything heavier
+# (Pyomo/AMPL, Qiskit, numpy, matplotlib) is an optional extra below.
+dependencies = []
+
+[project.optional-dependencies]
+classical = ["pyomo>=6.7", "amplpy>=0.14"]
+quantum = [
+    "qiskit>=1.0",
+    "qiskit-aer>=0.14",
+    "qiskit-optimization>=0.6",
+    "numpy>=1.24",
+]
+ibm = ["qiskit-ibm-runtime>=0.20"]
+viz = ["matplotlib>=3.7"]
+dashboard = ["fastapi>=0.110", "uvicorn[standard]>=0.27"]
+dwave = ["dwave-system>=1.20", "dwave-samplers>=1.0", "dimod>=0.12", "minorminer>=0.2"]
+all = ["acrp-quantum[classical,quantum,ibm,viz,dashboard,dwave]"]
+# ruff pinned to the locked version so CI lint matches the thesis environment
+# (ruff's default rule set changes between minor releases)
+dev = ["pytest>=7", "mypy>=1.5", "ruff==0.15.17", "httpx>=0.27"]
+ui = ["playwright>=1.55", "pytest-playwright>=0.7"]
+
+[project.scripts]
+acrpq = "acrpq.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+acrpq = ["py.typed", "classical/models/*.mod", "dashboard/static/*", "dashboard/static/vendor/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "ampl: opt-in test that runs a REAL AMPL+Couenne (needs ACRPQ_RUN_REAL_AMPL=1 and a licence)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+# Optional third-party stubs may target a newer Python than the package's
+# supported minimum (for example NumPy 2.4 on the Python 3.12 CI runner).
+# Keep checking every acrpq module while treating external packages as Any.
+follow_imports = "skip"
+exclude = ["^src/acrpq/classical/"]

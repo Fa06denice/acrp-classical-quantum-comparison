@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# virtual environments
+.venv/
+venv/
+env/
+
+# secrets / local config
+.env
+
+# benchmark scratch space (the reference CSV/JSON/figures in results/ are
+# versioned thesis evidence; only explicitly temporary runs stay ignored)
+results/tmp/
+
+# dashboard-saved runs (interactive = throwaway, scientific = local evidence
+# the user exports/keeps deliberately); not committed by default
+runs/
+
+# OS
+.DS_Store

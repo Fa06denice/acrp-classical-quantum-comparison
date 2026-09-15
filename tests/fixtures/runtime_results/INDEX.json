@@ -1,0 +1,18 @@
+{
+  "valid": {
+    "valid_counts_qubo.json": 6,
+    "valid_counts_qiskit.json": 6,
+    "valid_quasi.json": 3,
+    "valid_hex_keys.json": 3,
+    "valid_single_pub_register.json": 4,
+    "valid_neg_quasi_preserved.json": 3
+  },
+  "invalid": {
+    "invalid_empty.json": 3,
+    "invalid_negative_count.json": 3,
+    "invalid_multi_pub.json": 2,
+    "invalid_multi_register.json": 2,
+    "invalid_wrong_length.json": 3,
+    "invalid_nonfinite_quasi.json": 3
+  }
+}

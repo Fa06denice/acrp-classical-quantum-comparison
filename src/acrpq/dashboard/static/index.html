@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ACRP — Conflict Resolution Radar</title>
+  <link rel="stylesheet" href="/style.css" />
+  <!-- Chart.js bundled locally: the dashboard works fully offline (no CDN) -->
+  <script src="/vendor/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      ACRP <strong>RÉSOLUTION&nbsp;DE&nbsp;CONFLITS</strong> RADAR
+    </div>
+    <span class="demo-badge" data-testid="demo-badge"
+          title="This dashboard never submits to a real QPU on its own.">
+      Local demo — no real QPU submission</span>
+    <nav class="tabs">
+      <button class="tab active" data-tab="radar">RADAR</button>
+      <button class="tab expert-only" data-tab="explain">EXPLIQUER</button>
+      <button class="tab expert-only" data-tab="qubo">SCIENTIFIQUE</button>
+      <button class="tab expert-only" data-tab="benchmark">PREUVES</button>
+      <button class="tab expert-only" data-tab="qpuval">IBM QPU</button>
+    </nav>
+    <button id="experience-toggle" class="mode-toggle" aria-pressed="false"
+            title="révéler Explain, les détails scientifiques et le pipeline IBM QPU">DÉTAILS SCIENTIFIQUES ▾</button>
+    <button id="present-btn" class="tab present" title="presentation mode (defense)">▶ PRESENT</button>
+    <div class="caps" id="caps">classical: ✓</div>
+  </header>
+
+  <!-- guided presentation step bar (hidden until Present mode) -->
+  <div id="present-bar" class="present-bar hidden" role="region" aria-label="guided demo">
+    <button id="ps-prev" class="ghost" aria-label="previous step">‹</button>
+    <div class="ps-text"><b id="ps-title">—</b><span id="ps-desc"></span></div>
+    <button id="ps-next" class="solve" aria-label="next step">Next ›</button>
+    <button id="ps-exit" class="ghost" aria-label="exit presentation">✕</button>
+  </div>
+
+  <!-- ============ RADAR TAB ============ -->
+  <main id="tab-radar" class="tab-panel active">
+    <div class="radar-top">
+    <aside class="controls">
+      <h2>SCÉNARIO</h2>
+      <label>Instance<select id="instance"></select>
+      </label>
+      <p id="instance-classification-note" class="classification-note">
+        Classifying full instances with backend preflight…
+      </p>
+
+      <label>Maneuver grid K<sub>θ</sub>
+        <span id="k-limit-note" class="k-rec">recommended: K3 · calculating max…</span>
+        <span id="ntheta-val" class="k-val">K3</span>
+        <input id="ntheta" type="range" min="3" max="7" step="2" value="3" />
+      </label>
+      <details id="k-info" class="k-info">
+        <summary>Qu'est-ce que K ?</summary>
+        <p id="k-info-text" class="hint">K = nombre d'options candidates par avion
+          (incluant l'option no-op « ne rien faire »). Variables binaires = n·K = qubits ;
+          espace de recherche = K^n. K=3 par défaut pour la démo (équilibre
+          couverture/qubits). Changer K change la discrétisation : les comparaisons
+          entre méthodes ne sont valides qu'à K identique.</p>
+      </details>
+
+      <button id="demo-results-btn" class="solve">▶ Run comparison</button>
+      <small class="run-hint">Runs every applicable local method on this instance and grid,
+        re-scored by the same geometry. Impossible routes are skipped, never hidden.
+        No real QPU is ever launched.</small>
+
+      <label class="expert-only">Quick scenario
+        <select id="scenario"><option value="">— custom —</option></select>
+      </label>
+
+      <div class="expert-only" id="expert-controls">
+      <h2>EXPERT — SINGLE SOLVER</h2>
+      <p class="hint">The complete local comparison runs automatically. Use this section only to rerun one route with custom settings.</p>
+      <label>Méthode<select id="solver">
+          <option value="reference">Classical (exact, in-grid)</option>
+          <option value="qubo-exact">QUBO — exact min H(x)</option>
+          <option value="qubo-annealing">QUBO — simulated annealing</option>
+          <option value="dwave">QUBO — D-Wave SA</option>
+          <option value="dwave-qpu">QUBO — D-Wave real QPU</option>
+          <option value="qaoa">QUBO — QAOA (quantum, IBM)</option>
+        </select>
+      </label>
+      <div id="qaoa-opts" class="hidden">
+        <label>Backend<select id="mode">
+            <option value="aer_sim">Local simulator (Aer)</option>
+            <option value="ibm_runtime">Simulateur cloud IBM</option>
+            <option value="ibm_real">QPU IBM réel</option>
+          </select>
+        </label>
+        <label>QAOA depth p <span id="reps-val">2</span>
+          <input id="reps" type="range" min="1" max="4" value="2" />
+        </label>
+      </div>
+
+      <label>Execution profile
+        <select id="profile">
+          <option value="demo">DEMO — quick interactive (not citable)</option>
+          <option value="scientific">SCIENTIFIC — seed-repeated (citable)</option>
+        </select>
+      </label>
+      <label id="seeds-row" class="hidden">Seeds (comma-separated)
+        <input id="seeds" type="text" value="1,2,3,4,5" inputmode="numeric"
+               aria-label="scientific seeds, comma-separated" />
+      </label>
+
+      <label class="async-toggle"><input type="checkbox" id="async-job" /> run as background job (long runs)</label>
+      <button id="solve-btn" class="solve">▶ RUN SELECTED ONLY</button>
+      <button id="reset-btn" class="ghost">↺ show initial</button>
+      <button id="compare-btn" class="ghost">⚖ SHOW / RERUN ALL RESULTS</button>
+      <div id="job-box" class="jobbox hidden" aria-live="polite">
+        <div class="metric"><label>Tâche</label><b id="job-state">—</b></div>
+        <div class="metric"><label>Écoulé</label><b id="job-elapsed">—</b></div>
+        <button id="job-cancel" class="ghost">Annuler</button>
+        <span id="job-hist" class="hint"></span>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+      <div id="sci-box" class="jobbox hidden" aria-live="polite">
+        <div class="metric"><label>Exécution scientifique</label><b id="sci-runs">—</b></div>
+        <div class="metric"><label>Graines faisables</label><b id="sci-feas">—</b></div>
+        <div class="metric"><label>Objectif moyen ± σ</label><b id="sci-obj">—</b></div>
+        <div class="metric"><label>Dispersion des graines</label><b id="sci-spread">—</b></div>
+      </div>
+      <button id="save-run-btn" class="ghost hidden">💾 SAVE SCIENTIFIC RUN</button>
+      <span id="save-run-note" class="hint"></span>
+      </div>
+      <div id="err-box" class="errbox hidden" role="alert">
+        <div class="err-head"><span id="err-kind">ERREUR</span>
+          <button id="err-close" class="err-x" aria-label="dismiss" onclick="document.getElementById('err-box').classList.add('hidden')">×</button>
+        </div>
+        <p id="err-msg" class="err-msg"></p>
+        <p id="err-advice" class="err-advice"></p>
+        <div class="err-actions">
+          <button id="err-retry" class="ghost">Retry</button>
+          <button id="err-safe" class="ghost">Safe configuration</button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="radar-wrap">
+      <canvas id="radar" width="720" height="720"></canvas>
+      <div class="legend">
+        <span style="color:#ff4d5e">━ initial</span>
+        <span style="color:#36f2a0">━ continuous</span>
+        <span style="color:#ffcc4d">━ discrete</span>
+        <span><i class="sw vec"></i> velocity</span>
+        <span><i class="sw sep"></i> separation d</span>
+        <span><i class="sw cf"></i> conflict</span>
+        <span><i class="sw cpa"></i> CPA</span>
+      </div>
+
+      <div class="timeline" role="group" aria-label="simulation timeline">
+        <button id="sim-play" class="tl-btn" title="play/pause (space)" aria-label="play or pause">▶</button>
+        <button id="sim-reset" class="tl-btn" title="reset (R)" aria-label="reset">↺</button>
+        <button id="sim-back" class="tl-btn" title="step back" aria-label="step back">⏮</button>
+        <button id="sim-fwd" class="tl-btn" title="step forward" aria-label="step forward">⏭</button>
+        <input id="sim-slider" type="range" min="0" max="1000" value="0" aria-label="time" />
+        <label class="tl-speed">speed
+          <select id="sim-speed" aria-label="playback speed">
+            <option value="0.25">×0.25</option>
+            <option value="0.5">×0.5</option>
+            <option value="1" selected>×1</option>
+            <option value="2">×2</option>
+            <option value="4">×4</option>
+          </select>
+        </label>
+        <span id="sim-time" class="tl-time" aria-live="polite">t=0.000 / 0.000</span>
+      </div>
+
+      <div class="toggles" role="group" aria-label="radar layers">
+        <label>aircraft follow
+          <select id="tg-motion">
+            <option value="discrete" selected>discrete reference</option>
+            <option value="continuous">continuous Gurobi</option>
+            <option value="initial">initial trajectory</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="tg-initial" checked /> initial (red)</label>
+        <label><input type="checkbox" id="tg-continuous" checked /> continuous (green)</label>
+        <label><input type="checkbox" id="tg-discrete" checked /> discrete (yellow)</label>
+        <label><input type="checkbox" id="tg-labels" checked /> labels</label>
+        <label><input type="checkbox" id="tg-vectors" checked /> vectors</label>
+        <label><input type="checkbox" id="tg-sep" checked /> separation</label>
+        <label><input type="checkbox" id="tg-cpa" checked /> CPA</label>
+        <label><input type="checkbox" id="tg-trails" checked /> trails</label>
+      </div>
+    </section>
+
+    <aside class="metrics" id="metrics">
+      <h2>ÉTAT</h2>
+      <div class="metric"><label>Instance</label><b id="m-name">—</b></div>
+      <div class="metric"><label>Avions</label><b id="m-n">—</b></div>
+      <div class="metric big" id="m-conf-box">
+        <label>Conflits</label><b id="m-conf">—</b>
+      </div>
+      <div class="metric"><label>Résolus</label><b id="m-resolved">—</b></div>
+      <div class="metric"><label>Objectif (déviation)</label><b id="m-obj">—</b></div>
+      <div class="metric expert-only"><label>Solveur</label><b id="m-solver">—</b></div>
+      <div class="metric expert-only"><label>Profil</label><b id="m-profile">—</b></div>
+      <div class="metric expert-only"><label>Temps de calcul</label><b id="m-time">—</b></div>
+      <div id="q-metrics" class="qbox hidden expert-only">
+        <h2>QUANTIQUE</h2>
+        <div class="metric"><label>Backend</label><b id="m-backend">—</b></div>
+        <div class="metric"><label>Qubits</label><b id="m-qubits">—</b></div>
+        <div class="metric"><label>Profondeur du circuit</label><b id="m-depth">—</b></div>
+        <div class="metric"><label>Portes à 2 qubits</label><b id="m-2q">—</b></div>
+      </div>
+      <button id="explain-run-btn" class="ghost explain-run hidden">WHY THIS RESULT?</button>
+
+      <div id="compare-box" class="qbox hidden">
+        <h2>AVANT → APRÈS</h2>
+        <div class="ba-buttons">
+          <button id="ba-before" class="ghost">Avant</button>
+          <button id="ba-both" class="ghost">Les deux</button>
+          <button id="ba-after" class="ghost">Après</button>
+        </div>
+        <div class="metric"><label>Variation totale de cap</label><b id="m-dth">—</b></div>
+        <div class="metric"><label>Variation totale de vitesse</label><b id="m-dq">—</b></div>
+        <div class="metric"><label>Marge de séparation minimale</label><b id="m-margin">—</b></div>
+        <div class="man-head">
+          <h2>MANŒUVRES</h2>
+          <button id="man-csv" class="ghost" title="export CSV">⤓ CSV</button>
+        </div>
+        <div class="table-wrap"><table id="man-table"></table></div>
+      </div>
+
+      <div id="repro-box" class="qbox hidden expert-only">
+        <h2>REPRODUCIBILITY</h2>
+        <div class="metric"><label>Commit</label><b id="r-commit">—</b></div>
+        <div class="metric"><label>Working tree</label><b id="r-dirty">—</b></div>
+        <div class="metric"><label>Source hash</label><b id="r-hash">—</b></div>
+        <div class="metric"><label>Python</label><b id="r-py">—</b></div>
+        <div class="metric"><label>Qiskit</label><b id="r-qiskit">—</b></div>
+        <div class="metric"><label>D-Wave (dimod)</label><b id="r-dwave">—</b></div>
+        <div class="metric"><label>Seed</label><b id="r-seed">—</b></div>
+        <div class="metric"><label>Backend</label><b id="r-backend">—</b></div>
+        <div class="metric"><label>Grille K</label><b id="r-grid">—</b></div>
+        <div class="metric"><label>λ conflict / one-hot</label><b id="r-lambda">—</b></div>
+        <div class="metric"><label>Timestamp</label><b id="r-ts">—</b></div>
+        <h2 style="margin-top:14px">EXPORT</h2>
+        <div class="export-grid">
+          <button id="ex-json" class="ghost">JSON</button>
+          <button id="ex-aircraft" class="ghost">aircraft CSV</button>
+          <button id="ex-conflicts" class="ghost">conflicts CSV</button>
+          <button id="ex-png" class="ghost">radar PNG</button>
+          <button id="ex-html" class="ghost">Rapport HTML</button>
+          <button id="ex-cli" class="ghost">copy CLI</button>
+        </div>
+      </div>
+    </aside>
+    </div><!-- /.radar-top -->
+
+    <!-- unified comparison: the single source of the results chain (moved here
+         so radar + progress + comparison read as one screen; rendered by the
+         same IDs, so no numbers are duplicated elsewhere) -->
+    <section class="results-panel">
+      <div class="card wide">
+        <h2>ALL LOCAL ALGORITHMS — SAME INSTANCE, SAME SCORER</h2>
+        <p id="demo-objective" class="hint demo-objective"
+           data-testid="demo-objective"></p>
+        <p id="demo-identity" class="hint demo-identity" data-testid="demo-identity"></p>
+        <p id="objective-degeneracy" class="hint objective-degeneracy"
+           data-testid="objective-degeneracy" hidden></p>
+        <p id="ex-auto-status" class="ex-verdict">Choisissez une instance puis lancez la comparaison.</p>
+        <div id="ex-chain-decomp" class="chain-decomp"></div>
+        <div class="table-wrap"><table id="ex-algo-table" class="chain-table"></table></div>
+        <p id="timing-note" class="hint">Les temps muraux ne sont pas reproductibles
+          bit-à-bit (dépendants de la machine) ; un temps de file d'attente QPU ne
+          serait pas comparable. Répartition par phases affichée quand disponible,
+          sinon temps de résolution seul.</p>
+        <details id="na-tech" class="hidden" data-testid="na-tech">
+          <summary>Détails techniques (méthodes non applicables)</summary>
+          <ul id="na-tech-list"></ul>
+        </details>
+        <details id="control-diff">
+          <summary>SEE THE CONTINUOUS → DISCRETE MANEUVERS</summary>
+          <p class="hint">Per-aircraft controls returned by AMPL/Gurobi and by the
+            selected discrete reference. Angles are displayed in degrees; Δ is
+            discrete minus continuous. This is the concrete effect of the grid.</p>
+          <div class="table-wrap"><table id="control-diff-table"></table></div>
+          <p id="control-diff-note" class="hint"></p>
+        </details>
+        <button id="ex-rerun-all" class="ghost">↻ RERUN ALL LOCAL ALGORITHMS</button>
+        <button id="ex-cancel-all" class="ghost hidden">✕ CANCEL ALL</button>
+        <div class="export-row">
+          <span class="hint">Export comparison (instantané figé de la configuration affichée) :</span>
+          <button id="cmp-json" class="ghost" disabled>JSON</button>
+          <button id="cmp-csv" class="ghost" disabled>CSV</button>
+          <button id="cmp-html" class="ghost" disabled>HTML</button>
+          <span id="cmp-export-note" class="hint"></span>
+        </div>
+      </div>
+
+      <!-- business-language explanation of a completed run (demo view) -->
+      <div class="card wide" id="demo-explanation" data-testid="demo-explanation">
+        <h2>EXPLICATION DU RÉSULTAT</h2>
+        <label>Méthode expliquée
+          <select id="expl-method" aria-label="méthode expliquée"></select>
+        </label>
+        <p id="expl-summary" class="ex-verdict">Lancez la comparaison pour obtenir
+          l'explication du résultat.</p>
+        <p id="expl-deviations" class="hint" data-testid="expl-deviations"></p>
+        <div class="table-wrap"><table id="expl-aircraft-table"
+             data-testid="expl-aircraft-table"></table></div>
+        <p id="expl-note" class="hint"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ QUBO TAB ============ -->
+  <main id="tab-qubo" class="tab-panel">
+    <div class="qubo-grid">
+      <div class="card">
+        <h2>QUBO reformulation</h2>
+        <p class="hint">
+          Each aircraft picks one maneuver option (one-hot). The ACRP becomes
+          <code>min H(x) = Σ cost·x + λ<sub>pen</sub>·Σ conflict·x·x + λ<sub>oh</sub>·Σ(Σx−1)²</code>.
+          Solve it three ways on the <em>same</em> matrix: exact, simulated annealing, or QAOA.
+        </p>
+        <div class="metric"><label>Instance</label><b id="qb-name">—</b></div>
+        <div class="metric"><label>Aircraft × options (K)</label><b id="qb-shape">—</b></div>
+        <div class="metric"><label>Qubits (binary vars)</label><b id="qb-qubits">—</b></div>
+        <div class="metric"><label>Termes de pénalité de conflit</label><b id="qb-cterms">—</b></div>
+        <div class="metric"><label>One-hot penalty terms</label><b id="qb-oterms">—</b></div>
+        <div class="metric"><label>λ conflict</label><b id="qb-lpen">—</b></div>
+        <div class="metric"><label>λ one-hot</label><b id="qb-loh">—</b></div>
+        <label style="margin-top:14px">Niveaux de cap K<sub>θ</sub> <span id="qb-ntheta-val">3</span>
+          <input id="qb-ntheta" type="range" min="3" max="7" step="2" value="3" />
+        </label>
+      </div>
+      <div class="card">
+        <h2>QUBO matrix Q <span class="muted">(diagonal = linear, off = quadratic)</span></h2>
+        <div class="qmatrix-wrap"><canvas id="qmatrix" width="460" height="460"></canvas></div>
+        <p class="hint" id="qb-matrix-note"></p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ EXPLAIN TAB ============ -->
+  <main id="tab-explain" class="tab-panel">
+    <div class="explain-grid">
+      <p class="hint explain-intro">Detailed audit of the comparison shown on the main
+        screen: resource wall, energy decomposition, bit-mapping and sampled states.
+        These numbers mirror the main table; nothing is recomputed differently here.</p>
+
+      <div class="card expert-only">
+        <h2>RESOURCE WALL — BEFORE RUNNING</h2>
+        <p class="hint">A statevector stores 2<sup>N</sup> complex amplitudes. The safe ceiling is machine-dependent; disconnected QUBO components can be solved separately without approximation.</p>
+        <div class="metric"><label>Raw encoding</label><b id="ex-raw-q">—</b></div>
+        <div class="metric"><label>Raw statevector</label><b id="ex-raw-ram">—</b></div>
+        <div class="metric"><label>Safe local ceiling</label><b id="ex-safe-q">—</b></div>
+        <div class="metric"><label>Composantes exactes</label><b id="ex-components">—</b></div>
+        <div class="metric"><label>Plus grande composante</label><b id="ex-peak-q">—</b></div>
+        <div class="metric"><label>RAM crête décomposée</label><b id="ex-peak-ram">—</b></div>
+        <div class="metric"><label>Réduction mémoire</label><b id="ex-reduction">—</b></div>
+        <div class="metric"><label>Stratégie exécutée</label><b id="ex-strategy">not run</b></div>
+        <p id="ex-capacity-verdict" class="ex-verdict">Load a QUBO to estimate resources.</p>
+        <div class="table-wrap"><table id="ex-component-table"></table></div>
+      </div>
+
+      <div class="card expert-only">
+        <h2>WHY THIS ENERGY?</h2>
+        <p class="hint">The displayed terms are recomputed from the returned raw bitstring and checked against the encoded QUBO energy.</p>
+        <div class="energy-stack">
+          <div><span>Coût de manœuvre</span><b id="ex-e-cost">—</b></div>
+          <div><span>Pénalité de conflit</span><b id="ex-e-conflict">—</b></div>
+          <div><span>Pénalité one-hot</span><b id="ex-e-onehot">—</b></div>
+          <div class="energy-total"><span>Total H(x)</span><b id="ex-e-total">—</b></div>
+        </div>
+        <p id="ex-energy-check" class="ex-verdict">Run a solver to explain its result.</p>
+        <div class="metric"><label>Raw bitstring valid one-hot</label><b id="ex-onehot">—</b></div>
+        <div class="metric"><label>Réparation du décodage appliquée</label><b id="ex-repair">—</b></div>
+        <div class="metric"><label>Faisabilité décodée</label><b id="ex-feasible">—</b></div>
+        <p id="ex-proof" class="ex-verdict">Proof status — run a solver.</p>
+        <p id="ex-proof-caveat" class="hint"></p>
+        <div class="metric"><label>Terme d'énergie dominant</label><b id="ex-dom-term">—</b></div>
+        <div class="metric"><label>Avion le plus coûteux</label><b id="ex-dom-ac">—</b></div>
+        <div class="metric"><label>Paires en conflit actives</label><b id="ex-active-pairs">—</b></div>
+      </div>
+
+      <div class="card wide expert-only">
+        <h2>BITSTRING → MANŒUVRES DES AVIONS</h2>
+        <p class="hint">Canonical mapping: bit b = (aircraft − 1) × K + option. A repair is disclosed explicitly; it is never presented as a valid raw quantum sample.</p>
+        <code id="ex-bitstring" class="bitstring">No solved bitstring yet.</code>
+        <div class="table-wrap"><table id="ex-bit-table"></table></div>
+      </div>
+
+      <div class="card wide expert-only">
+        <h2>TOP SAMPLED STATES</h2>
+        <p class="hint">Probabilities are the optimizer sample distribution. “Raw valid” checks one-hot before decoding; “feasible” checks conflicts after the documented decode.</p>
+        <div class="table-wrap"><table id="ex-sample-table"></table></div>
+        <p id="ex-samples-empty" class="status">No sample distribution for this solver.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ BENCHMARK TAB ============ -->
+  <main id="tab-benchmark" class="tab-panel">
+    <div class="bench-grid">
+      <div class="card">
+        <h2>QAOA feasibility vs circuit depth</h2>
+        <canvas id="chart-feas"></canvas>
+      </div>
+      <div class="card">
+        <h2>Solution quality vs depth (1 = optimal)</h2>
+        <canvas id="chart-approx"></canvas>
+      </div>
+      <div class="card wide">
+        <h2>Campaign summary (classical anchor vs QAOA)</h2>
+        <div class="table-wrap"><table id="bench-table"></table></div>
+        <p id="bench-empty" class="status hidden">
+          No campaign data yet. Run <code>acrpq campaign --reps 1 2 3 --repetitions 5</code>
+          then reload.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ QPU VALIDATION TAB (Phase 8) ============ -->
+  <main id="tab-qpuval" class="tab-panel">
+    <div class="qv-grid">
+      <div class="card wide" id="qv-flags-box" data-step="flags">
+        <h2>QPU pipeline status</h2>
+        <span id="qv-badge-mode" class="badge" data-kind="dry-run">—</span>
+        <p id="qv-flags-note" class="hint"></p>
+        <p id="qv-disabled-note" class="ex-verdict bad hidden" data-testid="qv-disabled-note">
+          QPU workflow is disabled on this server (ACRPQ_QPU_ENABLED=false).
+          Dry-run stays available; prepare/confirm/submit are refused.
+        </p>
+      </div>
+
+      <div class="card wide" id="qv-account-box" data-step="account">
+        <h2>IBM account — local credential setup</h2>
+        <p class="hint">The token is deliberately never entered in this dashboard.
+          Save it once with IBM's SDK in a private terminal; it is not committed,
+          exported or sent to an ACRP-Q endpoint.</p>
+        <pre><code>cd acrp-lib-quantum
+source .venv/bin/activate
+python -c "import getpass; from qiskit_ibm_runtime import QiskitRuntimeService as S; S.save_account(channel='ibm_quantum_platform', token=getpass.getpass('IBM API key: ').strip(), overwrite=True, set_as_default=True)"</code></pre>
+        <p class="hint">Then restart the dashboard. Account configuration alone
+          never submits a job: the server flags and explicit confirmation gate still apply.</p>
+      </div>
+
+      <div class="card" id="qv-instance-box" data-step="instance">
+        <h2>1 · Instance &amp; candidate backends</h2>
+        <label>Instance<select id="qv-instance"></select></label>
+        <label>γ <input id="qv-gamma" type="number" step="0.05" value="0.4" /></label>
+        <label>β <input id="qv-beta" type="number" step="0.05" value="0.3" /></label>
+        <div id="qv-snapshot-list" data-testid="qv-snapshots"></div>
+        <button id="qv-assess-btn" class="ghost">ÉVALUER LES BACKENDS</button>
+      </div>
+
+      <div class="card wide" id="qv-decision-box" data-step="decision">
+        <h2>2 · Backend ranking (explainable)</h2>
+        <p id="qv-decision-verdict" class="ex-verdict">Assess backends first.</p>
+        <div class="table-wrap"><table id="qv-ranking-table" data-testid="qv-ranking-table"></table></div>
+        <div class="metric"><label>Selected</label><b id="qv-selected-backend">—</b>
+          <span id="qv-badge-selected" class="badge" data-kind="dry-run">not assessed</span></div>
+      </div>
+
+      <div class="card" id="qv-dryrun-box" data-step="dry-run">
+        <h2>3 · Dry run (never submits)</h2>
+        <button id="qv-dryrun-btn" class="ghost">SIMULATION À BLANC</button>
+        <div class="metric"><label>Would submit (jobs)</label><b id="qv-dryrun-jobs">—</b></div>
+        <div class="metric"><label>Submittable?</label><b id="qv-dryrun-submittable">—</b></div>
+        <ul id="qv-dryrun-warnings" data-testid="qv-dryrun-warnings"></ul>
+        <span id="qv-badge-dryrun" class="badge" data-kind="dry-run">DRY RUN — NO GATEWAY CALLED</span>
+      </div>
+
+      <div class="card" id="qv-prepare-box" data-step="prepare">
+        <h2>4 · Prepare artefact + plan</h2>
+        <button id="qv-prepare-btn" class="solve">PREPARE</button>
+        <div class="metric"><label>Identifiant d'exécution</label><b id="qv-run-id" data-testid="qv-run-id">—</b></div>
+        <div class="metric"><label>Artefact sha256</label><b id="qv-artefact-hash">—</b></div>
+        <div class="metric"><label>Budget (jobs/shots/s)</label><b id="qv-budget">—</b></div>
+        <p id="qv-stale-banner" class="ex-verdict bad hidden" data-testid="qv-stale-banner">
+          Configuration changed since prepare — re-prepare before confirming.
+        </p>
+      </div>
+
+      <div class="card" id="qv-confirm-box" data-step="confirm">
+        <h2>5 · Confirmation</h2>
+        <p class="hint" id="qv-consent-phrase" data-testid="qv-consent-phrase">
+          Confirm the prepared backend, hashes and budget. This step never submits.</p>
+        <button id="qv-confirm-btn" class="ghost" data-testid="qv-confirm-btn">CONFIRMER LA PRÉPARATION</button>
+        <button id="qv-submit-btn" class="solve hidden" disabled data-testid="qv-submit-btn"
+                title="disabled: server feature flags withhold submission">SUBMIT (disabled by flags)</button>
+        <span id="qv-badge-confirm" class="badge" data-kind="dry-run">—</span>
+      </div>
+
+      <div class="card wide" id="qv-status-box" data-step="status">
+        <h2>6 · Run status</h2>
+        <div class="metric"><label>State</label><b id="qv-run-state" data-testid="qv-run-state">—</b></div>
+        <div class="table-wrap"><table id="qv-events-table" data-testid="qv-events-table"></table></div>
+        <button id="qv-refresh-btn" class="ghost">REFRESH</button>
+        <button id="qv-cancel-btn" class="ghost">ANNULER LE CALCUL</button>
+      </div>
+
+      <div class="card wide" id="qv-result-box" data-step="result">
+        <h2>7 · Result</h2>
+        <span id="qv-badge-provenance" class="badge" data-kind="dry-run">no result</span>
+        <p id="qv-result-explain" class="ex-verdict">No result yet.</p>
+        <div class="table-wrap"><table id="qv-comparison-table" data-testid="qv-comparison-table"></table></div>
+        <button id="qv-export-json" class="ghost" data-testid="qv-export-json">EXPORT JSON</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- multi-solver comparison modal -->
+  <div id="cmp-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cmp-title">
+    <div class="modal-card cmp-card">
+      <h2 id="cmp-title">Solver comparison — same QUBO, same scorer</h2>
+      <p class="hint">All routes solve the identical configured problem, scored by the same geometry
+        kernel. Real quantum hardware is excluded here (use the QPU confirmation on the main panel).</p>
+      <div class="table-wrap"><table id="cmp-table"></table></div>
+      <p id="cmp-note" class="hint"></p>
+      <div class="modal-actions"><button id="cmp-close" class="ghost">Fermer</button></div>
+    </div>
+  </div>
+
+  <!-- QPU confirmation modal (real hardware is never launched on a bare click) -->
+  <div id="qpu-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="qpu-title">
+    <div class="modal-card">
+      <h2 id="qpu-title">⚠ Launch on real quantum hardware?</h2>
+      <p id="qpu-detail" class="hint"></p>
+      <div class="modal-actions">
+        <button id="qpu-no" class="ghost">Annuler</button>
+        <button id="qpu-yes" class="solve">Lancer sur QPU</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
